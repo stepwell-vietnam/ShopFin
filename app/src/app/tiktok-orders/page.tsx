@@ -3,7 +3,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { UploadCloud, Loader2, AlertTriangle, FileSpreadsheet, BarChart3, ShoppingCart, MapPin, Clock, Tag, RefreshCw, TrendingUp, TrendingDown, DollarSign, Percent, Package, Users, ArrowDown } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { parseTikTokOrderExcel, type TikTokOrder, type TikTokOrderParseResult } from '@/lib/parsers/tiktok-order-parser';
+import { parseTikTokOrderExcel, type TikTokOrder, type TikTokOrderParseResult, extractProductCode, extractSkuParts } from '@/lib/parsers/tiktok-order-parser';
 import type { ProgressCallback } from '@/lib/parsers/income-parser';
 import { formatCurrency, formatShortCurrency, formatNumber, formatPercent, formatFileSize } from '@/lib/formatters';
 import { useDataStore } from '@/store/useDataStore';
@@ -374,33 +374,161 @@ function TabFunnel({ all, completed, cancelled }: { all: TikTokOrder[]; complete
     </>);
 }
 
-// ===== TAB 2: Product Performance =====
+// ===== TAB 2: Product Performance (2-level hierarchy) =====
 function TabProducts({ completed }: { completed: TikTokOrder[] }) {
-    const skuMap: Record<string, { name: string; qty: number; revenue: number; orders: number }> = {};
-    completed.forEach(o => { const sku = o.sellerSku || o.skuId; if (!skuMap[sku]) skuMap[sku] = { name: o.productName.substring(0, 60), qty: 0, revenue: 0, orders: 0 }; skuMap[sku].qty += o.quantity; skuMap[sku].revenue += o.subtotalAfterDiscount; skuMap[sku].orders++; });
-    const products = Object.entries(skuMap).map(([sku, d]) => ({ sku, ...d, aov: d.orders > 0 ? d.revenue / d.orders : 0 })).sort((a, b) => b.revenue - a.revenue);
+    const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+
+    // Group by base product code (DETA51, DT53, etc.)
+    const productMap: Record<string, {
+        code: string;
+        name: string;
+        qty: number;
+        revenue: number;
+        orders: number;
+        variants: Record<string, { variant: string; size: string; qty: number; revenue: number; orders: number }>;
+    }> = {};
+
+    completed.forEach(o => {
+        const sku = o.sellerSku || o.skuId;
+        const parts = extractSkuParts(sku);
+        const code = parts.product;
+
+        if (!productMap[code]) productMap[code] = { code, name: o.productName.substring(0, 60), qty: 0, revenue: 0, orders: 0, variants: {} };
+        productMap[code].qty += o.quantity;
+        productMap[code].revenue += o.subtotalAfterDiscount;
+        productMap[code].orders++;
+
+        // Track variant+size within product
+        const varKey = sku;
+        if (!productMap[code].variants[varKey]) {
+            productMap[code].variants[varKey] = { variant: parts.variant, size: parts.size, qty: 0, revenue: 0, orders: 0 };
+        }
+        productMap[code].variants[varKey].qty += o.quantity;
+        productMap[code].variants[varKey].revenue += o.subtotalAfterDiscount;
+        productMap[code].variants[varKey].orders++;
+    });
+
+    const products = Object.values(productMap).sort((a, b) => b.revenue - a.revenue);
     const totalQty = products.reduce((s, p) => s + p.qty, 0);
     const totalRev = products.reduce((s, p) => s + p.revenue, 0);
+    const totalSkuCount = completed.reduce((acc, o) => { acc.add(o.sellerSku || o.skuId); return acc; }, new Set<string>()).size;
 
-    // Variant analysis
-    const varMap: Record<string, number> = {};
-    completed.forEach(o => { const v = o.variation || 'N/A'; varMap[v] = (varMap[v] || 0) + o.quantity; });
-    const variants = Object.entries(varMap).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name, value]) => ({ name: name.length > 20 ? name.substring(0, 20) : name, value }));
+    // Size distribution across all products
+    const sizeMap: Record<string, number> = {};
+    completed.forEach(o => {
+        const parts = extractSkuParts(o.sellerSku || o.skuId);
+        const sz = parts.size || 'N/A';
+        sizeMap[sz] = (sizeMap[sz] || 0) + o.quantity;
+    });
+    const sizeData = Object.entries(sizeMap)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => {
+            const na = parseInt(a.name), nb = parseInt(b.name);
+            if (!isNaN(na) && !isNaN(nb)) return na - nb;
+            return a.name.localeCompare(b.name);
+        });
 
-    const chartData = products.slice(0, 10).map(p => ({ name: p.sku, qty: p.qty, revenue: p.revenue / 1e6 }));
+    // Variant distribution (color/style)
+    const variantMap: Record<string, number> = {};
+    completed.forEach(o => {
+        const parts = extractSkuParts(o.sellerSku || o.skuId);
+        const v = parts.variant || 'N/A';
+        variantMap[v] = (variantMap[v] || 0) + o.quantity;
+    });
+    const variantData = Object.entries(variantMap).sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, value]) => ({ name, value }));
+
+    const chartData = products.slice(0, 10).map(p => ({ name: p.code, qty: p.qty, revenue: p.revenue / 1e6 }));
 
     return (<>
         <div className={styles.summaryGrid}>
-            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Tổng SKU</div><div className={styles.summaryCardValue}>{products.length}</div><div className={styles.summaryCardSub}>Sản phẩm bán được</div></div>
-            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Tổng SL bán</div><div className={styles.summaryCardValue}>{formatNumber(totalQty)}</div><div className={styles.summaryCardSub}>{(totalQty / Math.max(1, Object.keys(skuMap).length)).toFixed(1)} sp/SKU</div></div>
+            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Mã SP</div><div className={styles.summaryCardValue}>{products.length}</div><div className={styles.summaryCardSub}>{totalSkuCount} SKU chi tiết</div></div>
+            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Tổng SL bán</div><div className={styles.summaryCardValue}>{formatNumber(totalQty)}</div><div className={styles.summaryCardSub}>{(totalQty / Math.max(1, products.length)).toFixed(1)} sp/mã</div></div>
             <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Doanh thu SP</div><div className={styles.summaryCardValue}>{formatShortCurrency(totalRev)}</div><div className={styles.summaryCardSub}>Từ đơn hoàn thành</div></div>
-            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Top 1 SKU</div><div className={styles.summaryCardValue} style={{ color: '#2dd4bf', fontSize: '1.1rem' }}>{products[0]?.sku || '-'}</div><div className={styles.summaryCardSub}>{products[0] ? `${products[0].qty} sp · ${formatShortCurrency(products[0].revenue)}` : ''}</div></div>
+            <div className={styles.summaryCard}><div className={styles.summaryCardLabel}>Top 1</div><div className={styles.summaryCardValue} style={{ color: '#2dd4bf', fontSize: '1.1rem' }}>{products[0]?.code || '-'}</div><div className={styles.summaryCardSub}>{products[0] ? `${products[0].qty} sp · ${formatShortCurrency(products[0].revenue)}` : ''}</div></div>
         </div>
         <div className={styles.chartsRow}>
-            <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><BarChart3 size={18} style={{ color: '#2dd4bf' }} />Top 10 SKU theo Doanh thu</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={350}><BarChart data={chartData} layout="vertical" margin={{ left: 80 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={v => `${v}M`} /><YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} width={80} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} formatter={(v: number | undefined) => [`${(v ?? 0).toFixed(1)}M`, '']} /><Bar dataKey="revenue" name="Doanh thu (M)" fill="#2dd4bf" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></div>
-            <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><Package size={18} style={{ color: '#818cf8' }} />Top Phân loại bán chạy</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={350}><BarChart data={variants} layout="vertical" margin={{ left: 100 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} width={100} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} /><Bar dataKey="value" name="Số lượng" fill="#818cf8" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></div>
+            <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><BarChart3 size={18} style={{ color: '#2dd4bf' }} />Top 10 Mã SP theo Doanh thu</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={350}><BarChart data={chartData} layout="vertical" margin={{ left: 60 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={v => `${v}M`} /><YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={60} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} formatter={(v: number | undefined) => [`${(v ?? 0).toFixed(1)}M`, '']} /><Bar dataKey="revenue" name="Doanh thu (M)" fill="#2dd4bf" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></div>
+            <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><Package size={18} style={{ color: '#818cf8' }} />Phân bổ theo Size</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={350}><BarChart data={sizeData} barCategoryGap="8%"><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} /><Bar dataKey="value" name="Số lượng" fill="#818cf8" radius={[4, 4, 0, 0]} /></BarChart></ResponsiveContainer></div></div>
         </div>
-        <div className={`card ${styles.tableSection}`}><h3 className={styles.sectionTitle}>Chi tiết theo SKU</h3><div className={styles.tableWrap}><table className="table"><thead><tr><th>#</th><th>SKU</th><th>Tên SP</th><th style={{ textAlign: 'right' }}>SL</th><th style={{ textAlign: 'right' }}>Đơn</th><th style={{ textAlign: 'right' }}>Doanh thu</th><th style={{ textAlign: 'right' }}>AOV</th><th style={{ textAlign: 'right' }}>% DT</th></tr></thead><tbody>{products.slice(0, 20).map((p, i) => <tr key={i}><td style={{ fontWeight: 700, color: '#2dd4bf' }}>{i + 1}</td><td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{p.sku}</td><td style={{ fontSize: '0.78rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</td><td style={{ textAlign: 'right' }}>{p.qty}</td><td style={{ textAlign: 'right' }}>{p.orders}</td><td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(p.revenue)}</td><td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(p.aov)}</td><td style={{ textAlign: 'right' }}>{totalRev > 0 ? (p.revenue / totalRev * 100).toFixed(1) : 0}%</td></tr>)}</tbody></table></div></div>
+
+        {/* Variant distribution chart */}
+        <div className={`card ${styles.chartCard}`} style={{ marginBottom: 'var(--space-lg)' }}>
+            <h3 className={styles.chartTitle}><Tag size={18} style={{ color: '#f59e0b' }} />Phân bổ theo Biến thể (Màu/Kiểu)</h3>
+            <div className={styles.chartContainer}>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={variantData} layout="vertical" margin={{ left: 60 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                        <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                        <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} width={60} />
+                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} />
+                        <Bar dataKey="value" name="Số lượng" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+
+        {/* Product table with expandable variants */}
+        <div className={`card ${styles.tableSection}`}>
+            <h3 className={styles.sectionTitle}>Chi tiết theo Mã Sản phẩm</h3>
+            <div className={styles.tableWrap}>
+                <table className="table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Mã SP</th>
+                            <th>Tên sản phẩm</th>
+                            <th style={{ textAlign: 'right' }}>SKU</th>
+                            <th style={{ textAlign: 'right' }}>SL</th>
+                            <th style={{ textAlign: 'right' }}>Đơn</th>
+                            <th style={{ textAlign: 'right' }}>Doanh thu</th>
+                            <th style={{ textAlign: 'right' }}>AOV</th>
+                            <th style={{ textAlign: 'right' }}>% DT</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {products.map((p, i) => {
+                            const isExpanded = expandedProduct === p.code;
+                            const variantList = Object.values(p.variants).sort((a, b) => b.revenue - a.revenue);
+                            return (
+                                <>
+                                    <tr
+                                        key={p.code}
+                                        style={{ cursor: 'pointer', background: isExpanded ? 'var(--bg-tertiary)' : undefined }}
+                                        onClick={() => setExpandedProduct(isExpanded ? null : p.code)}
+                                    >
+                                        <td style={{ fontWeight: 700, color: '#2dd4bf' }}>{i + 1}</td>
+                                        <td style={{ fontFamily: 'monospace', fontSize: '0.85rem', fontWeight: 600 }}>
+                                            <span style={{ marginRight: 6 }}>{isExpanded ? '▼' : '▶'}</span>
+                                            {p.code}
+                                        </td>
+                                        <td style={{ fontSize: '0.78rem', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</td>
+                                        <td style={{ textAlign: 'right', color: 'var(--text-muted)' }}>{variantList.length}</td>
+                                        <td style={{ textAlign: 'right' }}>{p.qty}</td>
+                                        <td style={{ textAlign: 'right' }}>{p.orders}</td>
+                                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(p.revenue)}</td>
+                                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(p.orders > 0 ? p.revenue / p.orders : 0)}</td>
+                                        <td style={{ textAlign: 'right' }}>{totalRev > 0 ? (p.revenue / totalRev * 100).toFixed(1) : 0}%</td>
+                                    </tr>
+                                    {isExpanded && variantList.map((v, vi) => (
+                                        <tr key={`${p.code}-${vi}`} style={{ background: 'var(--bg-secondary)', fontSize: '0.8rem' }}>
+                                            <td></td>
+                                            <td style={{ paddingLeft: 32, fontFamily: 'monospace', color: 'var(--text-muted)' }}>{v.variant || '-'}</td>
+                                            <td style={{ color: 'var(--text-muted)' }}>Size: {v.size || '-'}</td>
+                                            <td></td>
+                                            <td style={{ textAlign: 'right' }}>{v.qty}</td>
+                                            <td style={{ textAlign: 'right' }}>{v.orders}</td>
+                                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(v.revenue)}</td>
+                                            <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(v.orders > 0 ? v.revenue / v.orders : 0)}</td>
+                                            <td style={{ textAlign: 'right' }}>{p.revenue > 0 ? (v.revenue / p.revenue * 100).toFixed(0) : 0}%</td>
+                                        </tr>
+                                    ))}
+                                </>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </>);
 }
 
@@ -518,7 +646,7 @@ function TabReturns({ all }: { all: TikTokOrder[] }) {
 
     // Products with most returns
     const retSkuMap: Record<string, { sku: string; name: string; count: number; value: number }> = {};
-    returned.forEach(o => { const sku = o.sellerSku || o.skuId; if (!retSkuMap[sku]) retSkuMap[sku] = { sku, name: o.productName.substring(0, 50), count: 0, value: 0 }; retSkuMap[sku].count++; retSkuMap[sku].value += o.orderRefundAmount; });
+    returned.forEach(o => { const sku = extractProductCode(o.sellerSku || o.skuId); if (!retSkuMap[sku]) retSkuMap[sku] = { sku, name: o.productName.substring(0, 50), count: 0, value: 0 }; retSkuMap[sku].count++; retSkuMap[sku].value += o.orderRefundAmount; });
     const retProducts = Object.values(retSkuMap).sort((a, b) => b.count - a.count);
 
     // Cancel by breakdown

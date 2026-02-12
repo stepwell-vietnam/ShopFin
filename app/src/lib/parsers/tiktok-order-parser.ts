@@ -95,6 +95,43 @@ function toStr(val: unknown): string {
     return String(val).trim();
 }
 
+/**
+ * Extract base product code from seller SKU.
+ * DETA51X-39  → DETA51
+ * DETA51M6-40 → DETA51
+ * DT53B-36    → DT53
+ * SATA21B-37  → SATA21
+ * ST21XD-3    → ST21
+ * VOD1-T      → VOD1
+ * Logic: match prefix letters + first digits sequence (letters + digits)
+ */
+export function extractProductCode(sellerSku: string): string {
+    if (!sellerSku) return 'UNKNOWN';
+    // Match: leading letters + first digit sequence (e.g. DETA51, DT53, SATA21, ST21, VOD1, DEBO17)
+    const m = sellerSku.match(/^([A-Za-z]+\d+)/);
+    return m ? m[1].toUpperCase() : sellerSku.toUpperCase();
+}
+
+/**
+ * Parse SKU into product code, variant code, and size.
+ * DETA51X-39  → { product: 'DETA51', variant: 'X', size: '39' }
+ * DETA51M6-40 → { product: 'DETA51', variant: 'M6', size: '40' }
+ * DT53B-36    → { product: 'DT53', variant: 'B', size: '36' }
+ */
+export function extractSkuParts(sellerSku: string): { product: string; variant: string; size: string } {
+    if (!sellerSku) return { product: 'UNKNOWN', variant: '', size: '' };
+    const product = extractProductCode(sellerSku);
+    // remainder after product code, before dash
+    const rest = sellerSku.substring(product.length);
+    const dashIdx = rest.indexOf('-');
+    if (dashIdx === -1) return { product, variant: rest.toUpperCase(), size: '' };
+    return {
+        product,
+        variant: rest.substring(0, dashIdx).toUpperCase(),
+        size: rest.substring(dashIdx + 1),
+    };
+}
+
 export async function parseTikTokOrderExcel(file: File, onProgress?: ProgressCallback): Promise<TikTokOrderParseResult> {
     const report = onProgress || (() => { });
 
