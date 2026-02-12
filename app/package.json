@@ -1,6 +1,6 @@
 {
   "name": "shopfin",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
   "scripts": {
     "dev": "next dev -p 3200",
@@ -15,7 +15,8 @@
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "recharts": "^3.7.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@types/node": "^20",

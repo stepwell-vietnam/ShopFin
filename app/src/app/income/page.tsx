@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
     UploadCloud, FileSpreadsheet, CheckCircle2, Loader2, X,
     DollarSign, TrendingUp, TrendingDown, Percent, Receipt,
@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { parseIncomeExcel, type IncomeParseResult, type ProgressCallback } from '@/lib/parsers/income-parser';
 import { formatCurrency, formatShortCurrency, formatPercent, formatNumber, formatDate, formatFileSize } from '@/lib/formatters';
+import { useDataStore } from '@/store/useDataStore';
 import styles from './income.module.css';
 
 
@@ -145,13 +146,26 @@ export default function IncomePage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<TabId>('overview');
+    const [progress, setProgress] = useState<number>(0);
+    const [progressMsg, setProgressMsg] = useState<string>('');
+
+    // Zustand store
+    const stored = useDataStore(s => s.shopeeIncome);
+    const setStored = useDataStore(s => s.setShopeeIncome);
+    const clearStored = useDataStore(s => s.clearShopeeIncome);
 
     // Local state for parsed data
     const [data, setData] = useState<IncomeParseResult | null>(null);
     const [fileName, setFileName] = useState<string>('');
     const [fileSize, setFileSize] = useState<number>(0);
-    const [progress, setProgress] = useState<number>(0);
-    const [progressMsg, setProgressMsg] = useState<string>('');
+
+    useEffect(() => {
+        if (stored.data && !data) {
+            setData(stored.data);
+            setFileName(stored.fileName);
+            setFileSize(stored.fileSize);
+        }
+    }, [stored, data]);
 
     const handleFile = useCallback(async (file: File) => {
         setError(null);
@@ -169,6 +183,7 @@ export default function IncomePage() {
             const result = await parseIncomeExcel(file, onProgress);
             setData(result);
             setActiveTab('overview');
+            setStored(result, file.name, file.size);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'Lỗi khi xử lý file');
             setData(null);
@@ -177,7 +192,11 @@ export default function IncomePage() {
             setProgress(0);
             setProgressMsg('');
         }
-    }, []);
+    }, [setStored]);
+
+    const handleClear = useCallback(() => {
+        setData(null); setFileName(''); clearStored();
+    }, [clearStored]);
 
     const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
     const handleDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
@@ -302,7 +321,7 @@ export default function IncomePage() {
                         {s.shopName} · {s.period.from} → {s.period.to}
                     </p>
                 </div>
-                <button className="btn btn-primary" onClick={() => { setData(null); setFileName(''); }}>
+                <button className="btn btn-primary" onClick={handleClear}>
                     <UploadCloud size={16} /> Upload file mới
                 </button>
             </div>

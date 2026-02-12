@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { UploadCloud, Loader2, AlertTriangle, FileSpreadsheet, BarChart3, ShoppingCart, MapPin, Clock, Tag, RefreshCw, TrendingUp, TrendingDown, DollarSign, Percent, Package, Users } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { parseOrderExcel, type ShopeeOrder, type OrderParseResult } from '@/lib/parsers/order-parser';
 import type { ProgressCallback } from '@/lib/parsers/income-parser';
 import { formatCurrency, formatShortCurrency, formatNumber, formatPercent, formatFileSize, formatDate } from '@/lib/formatters';
+import { useDataStore } from '@/store/useDataStore';
 import styles from '../income/income.module.css';
 
 const TABS = [
@@ -73,11 +74,25 @@ export default function OrdersPage() {
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeTab, setActiveTab] = useState<TabId>('funnel');
+    const [progress, setProgress] = useState(0);
+    const [progressMsg, setProgressMsg] = useState('');
+
+    // Zustand store
+    const stored = useDataStore(s => s.shopeeOrders);
+    const setStored = useDataStore(s => s.setShopeeOrders);
+    const clearStored = useDataStore(s => s.clearShopeeOrders);
+
     const [data, setData] = useState<OrderParseResult | null>(null);
     const [fileName, setFileName] = useState('');
     const [fileSize, setFileSize] = useState(0);
-    const [progress, setProgress] = useState(0);
-    const [progressMsg, setProgressMsg] = useState('');
+
+    useEffect(() => {
+        if (stored.data && !data) {
+            setData(stored.data);
+            setFileName(stored.fileName);
+            setFileSize(stored.fileSize);
+        }
+    }, [stored, data]);
 
     const handleFile = useCallback(async (file: File) => {
         setError(null); setIsProcessing(true); setFileName(file.name); setFileSize(file.size);
@@ -86,10 +101,15 @@ export default function OrdersPage() {
             const onProgress: ProgressCallback = (pct, msg) => { setProgress(pct); setProgressMsg(msg); };
             const r = await parseOrderExcel(file, onProgress);
             setData(r); setActiveTab('funnel');
+            setStored(r, file.name, file.size);
         }
         catch (e) { setError(e instanceof Error ? e.message : 'Lỗi'); setData(null); }
         finally { setIsProcessing(false); setProgress(0); setProgressMsg(''); }
-    }, []);
+    }, [setStored]);
+
+    const handleClear = useCallback(() => {
+        setData(null); setFileName(''); clearStored();
+    }, [clearStored]);
 
     const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
     const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(false); };
@@ -145,7 +165,7 @@ export default function OrdersPage() {
         <div>
             <div className="page-header">
                 <div><h1 className="page-header__title">Phân tích Đơn hàng</h1><p className="page-header__subtitle">{formatNumber(all.length)} đơn · Tháng 1/2026</p></div>
-                <button className="btn btn-primary" onClick={() => { setData(null); setFileName(''); }}><UploadCloud size={16} /> Upload file mới</button>
+                <button className="btn btn-primary" onClick={handleClear}><UploadCloud size={16} /> Upload file mới</button>
             </div>
             <div className={styles.fileInfoBar}><FileSpreadsheet size={20} className={styles.fileInfoIcon} /><div><div className={styles.fileInfoName}>{fileName}</div><div className={styles.fileInfoMeta}>{formatFileSize(fileSize)} · {formatNumber(all.length)} đơn · {formatNumber(completed.length)} hoàn thành · {formatNumber(cancelled.length)} hủy</div></div></div>
             <div className={styles.tabNav}>{TABS.map(t => { const I = t.icon; return <button key={t.id} className={`${styles.tabBtn} ${activeTab === t.id ? styles.tabBtnActive : ''}`} onClick={() => setActiveTab(t.id)}><I size={16} />{t.label}</button>; })}</div>
