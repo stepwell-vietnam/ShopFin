@@ -207,7 +207,48 @@
     font-size: 0.95rem;
     font-weight: 600;
     color: var(--text-primary);
+    margin-bottom: 0;
+}
+
+.chartHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: var(--space-md);
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+}
+
+.timeToggle {
+    display: flex;
+    gap: 2px;
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+    padding: 3px;
+}
+
+.timeToggleBtn {
+    padding: 5px 14px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    background: transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.timeToggleBtn:hover {
+    color: var(--text-primary);
+    background: rgba(45, 212, 191, 0.08);
+}
+
+.timeToggleBtnActive {
+    color: var(--accent-primary);
+    background: rgba(45, 212, 191, 0.15);
+    font-weight: 600;
 }
 
 .chartContainer {
@@ -409,6 +450,65 @@
     font-weight: 600;
     color: #ef4444;
     font-variant-numeric: tabular-nums;
+}
+
+/* Guide Box — Hướng dẫn lấy file */
+.guideBox {
+    margin-top: var(--space-md);
+    padding: var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+}
+
+.guideTitle {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.guideSteps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+.guideStep {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-md);
+}
+
+.guideStepNumber {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(45, 212, 191, 0.15);
+    color: var(--accent-primary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.guideStep strong {
+    color: var(--text-primary);
+    font-size: 0.85rem;
+}
+
+.guideStepDetail {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
+.guideStepDetail em {
+    color: var(--accent-primary);
+    font-style: normal;
+    font-weight: 500;
 }
 
 /* Responsive */

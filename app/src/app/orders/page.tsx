@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import { UploadCloud, Loader2, AlertTriangle, FileSpreadsheet, BarChart3, ShoppingCart, MapPin, Clock, Tag, RefreshCw, TrendingUp, TrendingDown, DollarSign, Percent, Package, Users } from 'lucide-react';
 import { BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { parseOrderExcel, type ShopeeOrder, type OrderParseResult } from '@/lib/parsers/order-parser';
+import type { ProgressCallback } from '@/lib/parsers/income-parser';
 import { formatCurrency, formatShortCurrency, formatNumber, formatPercent, formatFileSize, formatDate } from '@/lib/formatters';
 import styles from '../income/income.module.css';
 
@@ -23,6 +24,49 @@ const STATUS_COLORS: Record<string, string> = {
 };
 const PIE_COLORS = ['#2dd4bf', '#818cf8', '#f472b6', '#fb923c', '#a3e635', '#ef4444', '#64748b', '#06b6d4', '#eab308', '#8b5cf6'];
 
+// ===== Smart Time Aggregation =====
+type TimeViewMode = 'day' | 'week' | 'month';
+const TIME_VIEW_LABELS: Record<TimeViewMode, string> = { day: 'Theo ngày', week: 'Theo tuần', month: 'Theo tháng' };
+
+function getISOWeek(dateStr: string): string {
+    const d = new Date(dateStr);
+    const jan4 = new Date(d.getFullYear(), 0, 4);
+    const dayOfYear = Math.floor((d.getTime() - jan4.getTime()) / 86400000) + 4;
+    const week = Math.ceil(dayOfYear / 7);
+    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+function getMonthKey(dateStr: string): string { return dateStr.substring(0, 7); }
+function autoDetectViewMode(numDays: number): TimeViewMode {
+    if (numDays <= 45) return 'day';
+    if (numDays <= 180) return 'week';
+    return 'month';
+}
+function formatOrderAggLabel(label: string, mode: TimeViewMode): string {
+    if (mode === 'day') return label.substring(5);
+    if (mode === 'week') { const [y, w] = label.split('-W'); return `T${w}/${y.substring(2)}`; }
+    const [y, m] = label.split('-'); return `${parseInt(m)}/${y.substring(2)}`;
+}
+
+type OrderAggBucket = { label: string; total: number; done: number; cancel: number };
+
+function aggregateOrdersByMode(
+    dailyMap: Record<string, { total: number; done: number; cancel: number }>,
+    mode: TimeViewMode
+): OrderAggBucket[] {
+    if (mode === 'day') {
+        return Object.entries(dailyMap).sort().map(([d, v]) => ({ label: d, ...v }));
+    }
+    const buckets: Record<string, OrderAggBucket> = {};
+    for (const [dateStr, vals] of Object.entries(dailyMap)) {
+        const key = mode === 'week' ? getISOWeek(dateStr) : getMonthKey(dateStr);
+        if (!buckets[key]) buckets[key] = { label: key, total: 0, done: 0, cancel: 0 };
+        buckets[key].total += vals.total;
+        buckets[key].done += vals.done;
+        buckets[key].cancel += vals.cancel;
+    }
+    return Object.values(buckets).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export default function OrdersPage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -32,12 +76,19 @@ export default function OrdersPage() {
     const [data, setData] = useState<OrderParseResult | null>(null);
     const [fileName, setFileName] = useState('');
     const [fileSize, setFileSize] = useState(0);
+    const [progress, setProgress] = useState(0);
+    const [progressMsg, setProgressMsg] = useState('');
 
     const handleFile = useCallback(async (file: File) => {
         setError(null); setIsProcessing(true); setFileName(file.name); setFileSize(file.size);
-        try { const r = await parseOrderExcel(file); setData(r); setActiveTab('funnel'); }
+        setProgress(0); setProgressMsg('');
+        try {
+            const onProgress: ProgressCallback = (pct, msg) => { setProgress(pct); setProgressMsg(msg); };
+            const r = await parseOrderExcel(file, onProgress);
+            setData(r); setActiveTab('funnel');
+        }
         catch (e) { setError(e instanceof Error ? e.message : 'Lỗi'); setData(null); }
-        finally { setIsProcessing(false); }
+        finally { setIsProcessing(false); setProgress(0); setProgressMsg(''); }
     }, []);
 
     const onDragOver = (e: React.DragEvent) => { e.preventDefault(); setIsDragging(true); };
@@ -51,9 +102,37 @@ export default function OrdersPage() {
             <div className={styles.uploadSection}>
                 <div className={`${styles.uploadZone} ${isDragging ? styles.uploadZoneDragging : ''}`} onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} onClick={() => fileInputRef.current?.click()}>
                     <input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={onInput} className={styles.fileInput} />
-                    {isProcessing ? (<><Loader2 size={48} className={styles.uploadIcon} style={{ animation: 'spin 1s linear infinite' }} /><h2 className={styles.uploadTitle}>Đang phân tích...</h2><p className={styles.uploadSub}>{fileName}</p></>) : (<><UploadCloud size={48} className={styles.uploadIcon} /><h2 className={styles.uploadTitle}>Kéo thả file Order Excel vào đây</h2><p className={styles.uploadSub}>hoặc click để chọn file (.xlsx)</p></>)}
+                    {isProcessing ? (<><Loader2 size={48} className={styles.uploadIcon} style={{ animation: 'spin 1s linear infinite' }} /><h2 className={styles.uploadTitle}>Đang phân tích...</h2><p className={styles.uploadSub}>{fileName}</p>{progress > 0 && (<div style={{ width: '80%', maxWidth: 360, marginTop: 16 }}><div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 6 }}><span>{progressMsg}</span><span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{progress}%</span></div><div style={{ width: '100%', height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}><div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent-primary), #2dd4bf)', borderRadius: 3, transition: 'width 0.3s ease' }} /></div></div>)}</>) : (<><UploadCloud size={48} className={styles.uploadIcon} /><h2 className={styles.uploadTitle}>Kéo thả file Order Excel vào đây</h2><p className={styles.uploadSub}>hoặc click để chọn file (.xlsx)</p></>)}
                 </div>
             </div>
+            {/* Guide Box */}
+            <div className={styles.guideBox}>
+                <div className={styles.guideTitle}>📋 Hướng dẫn lấy file Excel từ Shopee</div>
+                <div className={styles.guideSteps}>
+                    <div className={styles.guideStep}>
+                        <span className={styles.guideStepNumber}>1</span>
+                        <div>
+                            <strong>Vào Shopee Seller Centre</strong> và đăng nhập
+                            <div className={styles.guideStepDetail}>
+                                Chọn <em>Quản lý đơn hàng</em> → <em>Tất cả</em> → chọn nút <em>Xuất</em> bên góc phải
+                            </div>
+                        </div>
+                    </div>
+                    <div className={styles.guideStep}>
+                        <span className={styles.guideStepNumber}>2</span>
+                        <div>
+                            <strong>Chọn khoảng thời gian</strong> phù hợp
+                            <div className={styles.guideStepDetail}>
+                                Nhấn <em>Xuất</em> → <em>Tải file về</em>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div style={{ marginTop: 'var(--space-md)', padding: '10px 14px', background: 'rgba(245,158,11,0.08)', borderRadius: 'var(--radius-sm)', fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                    ⚠️ <strong style={{ color: '#f59e0b' }}>Lưu ý:</strong> Cần kết hợp file này với <em style={{ color: 'var(--accent-primary)' }}>Báo cáo thu nhập</em> để biết đơn nào &quot;đang đi đường&quot; và đơn nào &quot;đã về tiền&quot;.
+                </div>
+            </div>
+
             {error && <div style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '8px' }}><AlertTriangle size={16} />{error}</div>}
         </div>
     );
@@ -98,10 +177,16 @@ function TabFunnel({ all, completed, cancelled }: { all: ShopeeOrder[]; complete
     cancelled.forEach(o => { const r = o.cancelReason.replace(/^(Hủy bởi người mua\s+lí do là:\s*|Tự động hủy bởi hệ thống Shopee\s+lí do là:\s*)/i, '').substring(0, 50) || 'Không rõ'; reasons[r] = (reasons[r] || 0) + 1; });
     const cancelData = Object.entries(reasons).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value).slice(0, 8);
 
-    // Daily orders
+    // Daily orders map (raw by date)
     const dailyMap: Record<string, { total: number; done: number; cancel: number }> = {};
     all.forEach(o => { const d = o.orderDate.substring(0, 10); if (!dailyMap[d]) dailyMap[d] = { total: 0, done: 0, cancel: 0 }; dailyMap[d].total++; if (o.status === 'Hoàn thành' || o.status === 'Đã nhận hàng') dailyMap[d].done++; if (o.status === 'Đã hủy') dailyMap[d].cancel++; });
-    const dailyData = Object.entries(dailyMap).sort().map(([d, v]) => ({ date: d.substring(5), ...v }));
+
+    // Smart time aggregation
+    const numDays = Object.keys(dailyMap).length;
+    const defaultMode = useMemo(() => autoDetectViewMode(numDays), [numDays]);
+    const [viewMode, setViewMode] = useState<TimeViewMode>(defaultMode);
+    const aggregated = useMemo(() => aggregateOrdersByMode(dailyMap, viewMode), [dailyMap, viewMode]);
+    const chartData = aggregated.map(d => ({ date: formatOrderAggLabel(d.label, viewMode), done: d.done, cancel: d.cancel }));
 
     return (<>
         <div className={styles.summaryGrid}>
@@ -114,7 +199,29 @@ function TabFunnel({ all, completed, cancelled }: { all: ShopeeOrder[]; complete
             <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><Percent size={18} style={{ color: '#2dd4bf' }} />Trạng thái Đơn hàng</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={300}><PieChart><Pie data={statusPie} cx="50%" cy="50%" innerRadius={55} outerRadius={95} paddingAngle={3} dataKey="value" label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}>{statusPie.map((s, i) => <Cell key={i} fill={STATUS_COLORS[s.name] || PIE_COLORS[i % PIE_COLORS.length]} />)}</Pie><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} formatter={(v: number | undefined) => [`${v ?? 0} đơn`, '']} /></PieChart></ResponsiveContainer></div></div>
             <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><TrendingDown size={18} style={{ color: '#ef4444' }} />Lý do Hủy đơn</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={300}><BarChart data={cancelData} layout="vertical" margin={{ left: 100 }}><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 10 }} width={100} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} /><Bar dataKey="value" name="Số đơn" fill="#ef4444" radius={[0, 4, 4, 0]} /></BarChart></ResponsiveContainer></div></div>
         </div>
-        <div className={`card ${styles.chartCard}`}><h3 className={styles.chartTitle}><BarChart3 size={18} style={{ color: '#2dd4bf' }} />Đơn hàng theo ngày</h3><div className={styles.chartContainer}><ResponsiveContainer width="100%" height={300}><BarChart data={dailyData} barCategoryGap="10%"><CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" /><XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} /><Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} /><Legend /><Bar dataKey="done" name="Hoàn thành" stackId="a" fill="#22c55e" /><Bar dataKey="cancel" name="Hủy" stackId="a" fill="#ef4444" /></BarChart></ResponsiveContainer></div></div>
+        <div className={`card ${styles.chartCard}`}>
+            <div className={styles.chartHeader}>
+                <h3 className={styles.chartTitle}><BarChart3 size={18} style={{ color: '#2dd4bf' }} />Đơn hàng {TIME_VIEW_LABELS[viewMode].toLowerCase()}</h3>
+                <div className={styles.timeToggle}>
+                    {(['day', 'week', 'month'] as TimeViewMode[]).map(m => (
+                        <button key={m} className={`${styles.timeToggleBtn} ${viewMode === m ? styles.timeToggleBtnActive : ''}`} onClick={() => setViewMode(m)}>{TIME_VIEW_LABELS[m]}</button>
+                    ))}
+                </div>
+            </div>
+            <div className={styles.chartContainer}>
+                <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={chartData} barCategoryGap="10%">
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
+                        <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} interval={chartData.length > 31 ? Math.floor(chartData.length / 20) : 0} />
+                        <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                        <Tooltip contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }} />
+                        <Legend />
+                        <Bar dataKey="done" name="Hoàn thành" stackId="a" fill="#22c55e" />
+                        <Bar dataKey="cancel" name="Hủy" stackId="a" fill="#ef4444" />
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
     </>);
 }
 

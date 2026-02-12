@@ -1,20 +1,21 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 import {
     UploadCloud, FileSpreadsheet, CheckCircle2, Loader2, X,
     DollarSign, TrendingUp, TrendingDown, Percent, Receipt,
     ShoppingCart, Package, BarChart3, Calendar, ArrowDownRight,
-    RefreshCw, AlertTriangle,
+    RefreshCw, AlertTriangle, Scale,
 } from 'lucide-react';
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
     PieChart, Pie, Cell, Legend,
     AreaChart, Area,
 } from 'recharts';
-import { parseIncomeExcel, type IncomeParseResult } from '@/lib/parsers/income-parser';
+import { parseIncomeExcel, type IncomeParseResult, type ProgressCallback } from '@/lib/parsers/income-parser';
 import { formatCurrency, formatShortCurrency, formatPercent, formatNumber, formatDate, formatFileSize } from '@/lib/formatters';
 import styles from './income.module.css';
+
 
 const FEE_COLORS: Record<string, string> = {
     'Phí cố định': '#ef4444',
@@ -36,6 +37,108 @@ const TABS = [
 
 type TabId = typeof TABS[number]['id'];
 
+// =====================================================
+// Smart Time Aggregation
+// =====================================================
+type TimeViewMode = 'day' | 'week' | 'month';
+
+const TIME_VIEW_LABELS: Record<TimeViewMode, string> = {
+    day: 'Theo ngày',
+    week: 'Theo tuần',
+    month: 'Theo tháng',
+};
+
+type AggregatedData = {
+    label: string;
+    orderCount: number;
+    productPrice: number;
+    totalPayment: number;
+    totalFees: number;
+    totalTax: number;
+    fixedFee: number;
+    serviceFee: number;
+    paymentFee: number;
+    affiliateFee: number;
+    refund: number;
+};
+
+/** Get ISO week number */
+function getISOWeek(dateStr: string): string {
+    const d = new Date(dateStr);
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7));
+    const week1 = new Date(d.getFullYear(), 0, 4);
+    const weekNum = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + ((week1.getDay() + 6) % 7)) / 7);
+    return `${d.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+/** Get month key from date */
+function getMonthKey(dateStr: string): string {
+    return dateStr.substring(0, 7); // "2025-01"
+}
+
+/** Auto-detect best view mode based on number of unique days */
+function autoDetectViewMode(totalDays: number): TimeViewMode {
+    if (totalDays <= 45) return 'day';
+    if (totalDays <= 180) return 'week';
+    return 'month';
+}
+
+/** Format labels for display */
+function formatAggLabel(label: string, mode: TimeViewMode): string {
+    if (mode === 'day') return label.substring(5); // "01-15"
+    if (mode === 'week') {
+        const parts = label.split('-W');
+        return `T${parts[1]}/${parts[0].substring(2)}`;
+    }
+    // month: "2025-01" → "T01/25"
+    const [y, m] = label.split('-');
+    return `T${m}/${y.substring(2)}`;
+}
+
+/** Aggregate daily income data by view mode */
+function aggregateByMode(
+    daily: IncomeParseResult['dailyIncome'],
+    mode: TimeViewMode
+): AggregatedData[] {
+    const buckets: Record<string, AggregatedData> = {};
+
+    for (const d of daily) {
+        const key = mode === 'day' ? d.date
+            : mode === 'week' ? getISOWeek(d.date)
+                : getMonthKey(d.date);
+
+        if (!buckets[key]) {
+            buckets[key] = {
+                label: key,
+                orderCount: 0,
+                productPrice: 0,
+                totalPayment: 0,
+                totalFees: 0,
+                totalTax: 0,
+                fixedFee: 0,
+                serviceFee: 0,
+                paymentFee: 0,
+                affiliateFee: 0,
+                refund: 0,
+            };
+        }
+        const b = buckets[key];
+        b.orderCount += d.orderCount;
+        b.productPrice += d.productPrice;
+        b.totalPayment += d.totalPayment;
+        b.totalFees += d.totalFees;
+        b.totalTax += d.totalTax;
+        b.fixedFee += d.fixedFee;
+        b.serviceFee += d.serviceFee;
+        b.paymentFee += d.paymentFee;
+        b.affiliateFee += d.affiliateFee;
+        b.refund += d.refund;
+    }
+
+    return Object.values(buckets).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export default function IncomePage() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isDragging, setIsDragging] = useState(false);
@@ -47,15 +150,23 @@ export default function IncomePage() {
     const [data, setData] = useState<IncomeParseResult | null>(null);
     const [fileName, setFileName] = useState<string>('');
     const [fileSize, setFileSize] = useState<number>(0);
+    const [progress, setProgress] = useState<number>(0);
+    const [progressMsg, setProgressMsg] = useState<string>('');
 
     const handleFile = useCallback(async (file: File) => {
         setError(null);
         setIsProcessing(true);
         setFileName(file.name);
         setFileSize(file.size);
+        setProgress(0);
+        setProgressMsg('');
 
         try {
-            const result = await parseIncomeExcel(file);
+            const onProgress: ProgressCallback = (pct, msg) => {
+                setProgress(pct);
+                setProgressMsg(msg);
+            };
+            const result = await parseIncomeExcel(file, onProgress);
             setData(result);
             setActiveTab('overview');
         } catch (err) {
@@ -63,6 +174,8 @@ export default function IncomePage() {
             setData(null);
         } finally {
             setIsProcessing(false);
+            setProgress(0);
+            setProgressMsg('');
         }
     }, []);
 
@@ -84,7 +197,7 @@ export default function IncomePage() {
             <div>
                 <div className="page-header">
                     <div>
-                        <h1 className="page-header__title">Phân tích Thu nhập</h1>
+                        <h1 className="page-header__title">Phân Tích Doanh Thu</h1>
                         <p className="page-header__subtitle">Upload file Income Excel từ Shopee để phân tích chi tiết</p>
                     </div>
                 </div>
@@ -109,6 +222,17 @@ export default function IncomePage() {
                                 <Loader2 size={48} className={styles.uploadIcon} style={{ animation: 'spin 1s linear infinite' }} />
                                 <h2 className={styles.uploadTitle}>Đang phân tích file...</h2>
                                 <p className={styles.uploadSub}>{fileName}</p>
+                                {progress > 0 && (
+                                    <div style={{ width: '80%', maxWidth: 360, marginTop: 16 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)', marginBottom: 6 }}>
+                                            <span>{progressMsg}</span>
+                                            <span style={{ fontWeight: 600, color: 'var(--accent-primary)' }}>{progress}%</span>
+                                        </div>
+                                        <div style={{ width: '100%', height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
+                                            <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg, var(--accent-primary), #2dd4bf)', borderRadius: 3, transition: 'width 0.3s ease' }} />
+                                        </div>
+                                    </div>
+                                )}
                             </>
                         ) : (
                             <>
@@ -117,6 +241,34 @@ export default function IncomePage() {
                                 <p className={styles.uploadSub}>hoặc click để chọn file (.xlsx)</p>
                             </>
                         )}
+                    </div>
+
+                    {/* Hướng dẫn lấy file */}
+                    <div className={styles.guideBox}>
+                        <h3 className={styles.guideTitle}>📋 Hướng dẫn lấy file Excel từ Shopee</h3>
+                        <div className={styles.guideSteps}>
+                            <div className={styles.guideStep}>
+                                <span className={styles.guideStepNumber}>1</span>
+                                <div>
+                                    <strong>Vào Shopee Seller Centre</strong> và đăng nhập<br />
+                                    <span className={styles.guideStepDetail}>Chọn <em>Tài Chính</em> → <em>Doanh Thu</em> → <em>Chi tiết</em> → mục <em>Đã thanh toán</em></span>
+                                </div>
+                            </div>
+                            <div className={styles.guideStep}>
+                                <span className={styles.guideStepNumber}>2</span>
+                                <div>
+                                    <strong>Chọn Khung thời gian</strong> phù hợp<br />
+                                    <span className={styles.guideStepDetail}>Nhấn nút <em>Xuất</em> để bắt đầu xuất báo cáo</span>
+                                </div>
+                            </div>
+                            <div className={styles.guideStep}>
+                                <span className={styles.guideStepNumber}>3</span>
+                                <div>
+                                    <strong>Tải file Excel</strong><br />
+                                    <span className={styles.guideStepDetail}>Vào biểu tượng menu bên cạnh và chọn <em>Tải về</em> để lấy file Excel</span>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -145,7 +297,7 @@ export default function IncomePage() {
         <div>
             <div className="page-header">
                 <div>
-                    <h1 className="page-header__title">Phân tích Thu nhập</h1>
+                    <h1 className="page-header__title">Phân Tích Doanh Thu</h1>
                     <p className="page-header__subtitle">
                         {s.shopName} · {s.period.from} → {s.period.to}
                     </p>
@@ -201,6 +353,11 @@ function TabOverview({ s, daily, orders }: {
     daily: IncomeParseResult['dailyIncome'];
     orders: IncomeParseResult['orders'];
 }) {
+    const defaultMode = useMemo(() => autoDetectViewMode(daily.length), [daily.length]);
+    const [viewMode, setViewMode] = useState<TimeViewMode>(defaultMode);
+
+    const aggregated = useMemo(() => aggregateByMode(daily, viewMode), [daily, viewMode]);
+
     const margin = s.totalRevenue > 0 ? (s.netRevenue / s.totalRevenue) * 100 : 0;
     const feeRatio = s.totalRevenue > 0 ? (Math.abs(s.totalFees) / s.totalRevenue) * 100 : 0;
     const refundRate = s.originalPrice > 0 ? (Math.abs(s.refundAmount) / s.originalPrice) * 100 : 0;
@@ -213,9 +370,8 @@ function TabOverview({ s, daily, orders }: {
         { label: 'AOV (TB/đơn)', value: formatShortCurrency(aov), icon: ShoppingCart, color: '#818cf8', sub: `${formatNumber(orders.length)} đơn` },
     ];
 
-    // Revenue chart (daily)
-    const chartData = daily.map(d => ({
-        date: d.date.substring(5),
+    const chartData = aggregated.map(d => ({
+        date: formatAggLabel(d.label, viewMode),
         revenue: d.productPrice,
         net: d.totalPayment,
     }));
@@ -273,15 +429,28 @@ function TabOverview({ s, daily, orders }: {
 
             {/* Revenue Chart */}
             <div className={`card ${styles.chartCard}`}>
-                <h3 className={styles.chartTitle}>
-                    <BarChart3 size={18} style={{ color: 'var(--accent-primary)' }} />
-                    Doanh thu & Thực nhận theo ngày
-                </h3>
+                <div className={styles.chartHeader}>
+                    <h3 className={styles.chartTitle}>
+                        <BarChart3 size={18} style={{ color: 'var(--accent-primary)' }} />
+                        Doanh thu & Thực nhận
+                    </h3>
+                    <div className={styles.timeToggle}>
+                        {(['day', 'week', 'month'] as TimeViewMode[]).map(m => (
+                            <button
+                                key={m}
+                                className={`${styles.timeToggleBtn} ${viewMode === m ? styles.timeToggleBtnActive : ''}`}
+                                onClick={() => setViewMode(m)}
+                            >
+                                {TIME_VIEW_LABELS[m]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className={styles.chartContainer}>
                     <ResponsiveContainer width="100%" height={320}>
                         <BarChart data={chartData} barCategoryGap="15%">
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} interval={chartData.length > 31 ? Math.floor(chartData.length / 20) : 0} />
                             <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={v => formatShortCurrency(v)} />
                             <Tooltip
                                 contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }}
@@ -457,18 +626,24 @@ function TabFees({ s }: { s: IncomeParseResult['summary'] }) {
 // TAB 3: Theo ngày
 // =====================================================
 function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
+    const defaultMode = useMemo(() => autoDetectViewMode(daily.length), [daily.length]);
+    const [viewMode, setViewMode] = useState<TimeViewMode>(defaultMode);
+
+    const aggregated = useMemo(() => aggregateByMode(daily, viewMode), [daily, viewMode]);
+
     const totalRevenue = daily.reduce((s, d) => s + d.productPrice, 0);
-    const totalNet = daily.reduce((s, d) => s + d.totalPayment, 0);
     const totalOrders = daily.reduce((s, d) => s + d.orderCount, 0);
     const avgDaily = daily.length > 0 ? totalRevenue / daily.length : 0;
 
-    // Find best & worst days
-    const sorted = [...daily].sort((a, b) => b.totalPayment - a.totalPayment);
-    const bestDay = sorted[0];
-    const worstDay = sorted[sorted.length - 1];
+    // Find best & worst periods
+    const sorted = [...aggregated].sort((a, b) => b.totalPayment - a.totalPayment);
+    const bestPeriod = sorted[0];
+    const worstPeriod = sorted[sorted.length - 1];
 
-    const chartData = daily.map(d => ({
-        date: d.date.substring(5),
+    const periodLabel = viewMode === 'day' ? 'ngày' : viewMode === 'week' ? 'tuần' : 'tháng';
+
+    const chartData = aggregated.map(d => ({
+        date: formatAggLabel(d.label, viewMode),
         revenue: d.productPrice,
         net: d.totalPayment,
         fees: Math.abs(d.totalFees),
@@ -481,24 +656,24 @@ function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
                 <div className={styles.summaryCard}>
                     <div className={styles.summaryCardLabel}>TB Doanh thu/ngày</div>
                     <div className={styles.summaryCardValue}>{formatShortCurrency(avgDaily)}</div>
-                    <div className={styles.summaryCardSub}>{daily.length} ngày giao dịch</div>
+                    <div className={styles.summaryCardSub}>{daily.length} ngày · {aggregated.length} {periodLabel}</div>
                 </div>
                 <div className={styles.summaryCard}>
-                    <div className={styles.summaryCardLabel}>Ngày cao nhất</div>
+                    <div className={styles.summaryCardLabel}>{periodLabel === 'ngày' ? 'Ngày' : periodLabel === 'tuần' ? 'Tuần' : 'Tháng'} cao nhất</div>
                     <div className={styles.summaryCardValue} style={{ color: '#22c55e' }}>
-                        {bestDay ? formatDate(bestDay.date) : '-'}
+                        {bestPeriod ? formatAggLabel(bestPeriod.label, viewMode) : '-'}
                     </div>
                     <div className={styles.summaryCardSub}>
-                        {bestDay ? `${formatShortCurrency(bestDay.totalPayment)} · ${bestDay.orderCount} đơn` : ''}
+                        {bestPeriod ? `${formatShortCurrency(bestPeriod.totalPayment)} · ${bestPeriod.orderCount} đơn` : ''}
                     </div>
                 </div>
                 <div className={styles.summaryCard}>
-                    <div className={styles.summaryCardLabel}>Ngày thấp nhất</div>
+                    <div className={styles.summaryCardLabel}>{periodLabel === 'ngày' ? 'Ngày' : periodLabel === 'tuần' ? 'Tuần' : 'Tháng'} thấp nhất</div>
                     <div className={styles.summaryCardValue} style={{ color: '#ef4444' }}>
-                        {worstDay ? formatDate(worstDay.date) : '-'}
+                        {worstPeriod ? formatAggLabel(worstPeriod.label, viewMode) : '-'}
                     </div>
                     <div className={styles.summaryCardSub}>
-                        {worstDay ? `${formatShortCurrency(worstDay.totalPayment)} · ${worstDay.orderCount} đơn` : ''}
+                        {worstPeriod ? `${formatShortCurrency(worstPeriod.totalPayment)} · ${worstPeriod.orderCount} đơn` : ''}
                     </div>
                 </div>
                 <div className={styles.summaryCard}>
@@ -512,10 +687,23 @@ function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
 
             {/* Area Chart */}
             <div className={`card ${styles.chartCard}`} style={{ marginBottom: 'var(--space-lg)' }}>
-                <h3 className={styles.chartTitle}>
-                    <TrendingUp size={18} style={{ color: '#2dd4bf' }} />
-                    Xu hướng Doanh thu 30 ngày
-                </h3>
+                <div className={styles.chartHeader}>
+                    <h3 className={styles.chartTitle}>
+                        <TrendingUp size={18} style={{ color: '#2dd4bf' }} />
+                        Xu hướng Doanh thu
+                    </h3>
+                    <div className={styles.timeToggle}>
+                        {(['day', 'week', 'month'] as TimeViewMode[]).map(m => (
+                            <button
+                                key={m}
+                                className={`${styles.timeToggleBtn} ${viewMode === m ? styles.timeToggleBtnActive : ''}`}
+                                onClick={() => setViewMode(m)}
+                            >
+                                {TIME_VIEW_LABELS[m]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <div className={styles.chartContainer}>
                     <ResponsiveContainer width="100%" height={320}>
                         <AreaChart data={chartData}>
@@ -530,7 +718,7 @@ function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
                                 </linearGradient>
                             </defs>
                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-default)" />
-                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                            <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} interval={chartData.length > 31 ? Math.floor(chartData.length / 20) : 0} />
                             <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={v => formatShortCurrency(v)} />
                             <Tooltip
                                 contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: '8px', color: 'var(--text-primary)' }}
@@ -544,14 +732,14 @@ function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
                 </div>
             </div>
 
-            {/* Daily Table */}
+            {/* Aggregated Table */}
             <div className={`card ${styles.tableSection}`}>
-                <h3 className={styles.sectionTitle}>Chi tiết theo ngày</h3>
+                <h3 className={styles.sectionTitle}>Chi tiết {TIME_VIEW_LABELS[viewMode].toLowerCase()}</h3>
                 <div className={styles.tableWrap}>
                     <table className="table">
                         <thead>
                             <tr>
-                                <th>Ngày</th>
+                                <th>{viewMode === 'day' ? 'Ngày' : viewMode === 'week' ? 'Tuần' : 'Tháng'}</th>
                                 <th style={{ textAlign: 'right' }}>Đơn</th>
                                 <th style={{ textAlign: 'right' }}>Doanh thu SP</th>
                                 <th style={{ textAlign: 'right' }}>Phí cố định</th>
@@ -564,11 +752,11 @@ function TabDaily({ daily }: { daily: IncomeParseResult['dailyIncome'] }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {daily.map((d, i) => {
+                            {aggregated.map((d, i) => {
                                 const feeR = d.productPrice > 0 ? (Math.abs(d.totalFees + d.totalTax) / d.productPrice * 100) : 0;
                                 return (
                                     <tr key={i}>
-                                        <td>{formatDate(d.date)}</td>
+                                        <td>{viewMode === 'day' ? formatDate(d.label) : formatAggLabel(d.label, viewMode)}</td>
                                         <td style={{ textAlign: 'right' }}>{d.orderCount}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{formatCurrency(d.productPrice)}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#ef4444' }}>{formatCurrency(Math.abs(d.fixedFee))}</td>

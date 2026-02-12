@@ -10,7 +10,7 @@ import {
 import styles from './Sidebar.module.css';
 
 const NAV_ITEMS = [
-    { href: '/income', label: 'Phân tích Income', icon: FileBarChart },
+    { href: '/income', label: 'Phân Tích Doanh Thu', icon: FileBarChart },
     { href: '/orders', label: 'Phân tích Đơn hàng', icon: ShoppingCart },
 ];
 

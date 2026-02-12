@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import type { ProgressCallback } from './income-parser';
 
 // ==========================================
 // ShopeeOrder — parsed from Order.all Excel
@@ -102,21 +103,38 @@ function toStr(val: unknown): string {
     return String(val).trim();
 }
 
-export async function parseOrderExcel(file: File): Promise<OrderParseResult> {
+export async function parseOrderExcel(file: File, onProgress?: ProgressCallback): Promise<OrderParseResult> {
+    const report = onProgress || (() => { });
+
+    report(5, 'Đang đọc file Excel...');
     const buffer = await file.arrayBuffer();
+    await new Promise(r => setTimeout(r, 0));
+
+    report(15, 'Đang phân tích cấu trúc...');
     const wb = XLSX.read(buffer, { type: 'array' });
+    await new Promise(r => setTimeout(r, 0));
 
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (!sheet) throw new Error('Không tìm thấy sheet trong file');
 
+    report(30, 'Đang đọc dữ liệu...');
     const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1 });
     if (rows.length < 2) throw new Error('File không có dữ liệu');
+    await new Promise(r => setTimeout(r, 0));
 
     const orders: ShopeeOrder[] = [];
+    const totalRows = rows.length - 1;
 
     for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
         if (!r || !r[0]) continue;
+
+        // Report progress every 500 rows
+        if (i % 500 === 0) {
+            const pct = 30 + Math.round((i / totalRows) * 65);
+            report(pct, `Đang xử lý đơn hàng (${i.toLocaleString()}/${totalRows.toLocaleString()})...`);
+            await new Promise(r => setTimeout(r, 0));
+        }
 
         // Normalize status — group "Người mua xác nhận..." into "Đã nhận hàng"
         let status = toStr(r[3]);
@@ -196,5 +214,6 @@ export async function parseOrderExcel(file: File): Promise<OrderParseResult> {
         });
     }
 
+    report(100, 'Hoàn tất!');
     return { orders, totalRows: rows.length - 1 };
 }

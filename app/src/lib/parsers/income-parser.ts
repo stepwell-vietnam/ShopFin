@@ -310,26 +310,60 @@ export interface IncomeParseResult {
     adjustments: AdjustmentRecord[];
 }
 
-export async function parseIncomeExcel(file: File): Promise<IncomeParseResult> {
-    const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: 'array' });
+export type ProgressCallback = (percent: number, message: string) => void;
 
-    // Parse Summary sheet
+export async function parseIncomeExcel(
+    file: File,
+    onProgress?: ProgressCallback
+): Promise<IncomeParseResult> {
+    const report = onProgress || (() => { });
+
+    // Phase 1: Read file (0-30%)
+    report(5, 'Đang đọc file Excel...');
+    const buffer = await file.arrayBuffer();
+    await new Promise(r => setTimeout(r, 0)); // yield to UI
+
+    report(10, 'Đang phân tích cấu trúc...');
+    const workbook = XLSX.read(buffer, { type: 'array' });
+    await new Promise(r => setTimeout(r, 0));
+
+    // Phase 2: Parse Summary (30%)
+    report(30, 'Đang đọc bảng tổng hợp...');
     const summarySheet = workbook.Sheets['Summary'];
     if (!summarySheet) throw new Error('Không tìm thấy sheet "Summary" trong file Income');
     const summary = parseSummarySheet(summarySheet);
+    await new Promise(r => setTimeout(r, 0));
 
-    // Parse "Doanh thu" sheet (per-order data)
-    const doanhThuSheet = workbook.Sheets['Doanh thu'];
-    if (!doanhThuSheet) throw new Error('Không tìm thấy sheet "Doanh thu" trong file Income');
-    const orders = parseDoanhThuSheet(doanhThuSheet);
+    // Phase 3: Parse all "Doanh thu" sheets (30-80%)
+    const doanhThuSheetNames = workbook.SheetNames.filter(n => n.startsWith('Doanh thu'));
+    if (doanhThuSheetNames.length === 0) {
+        throw new Error('Không tìm thấy sheet "Doanh thu" trong file Income');
+    }
 
-    // Aggregate to daily
+    let orders: IncomeOrderRecord[] = [];
+    const sheetRange = 50; // 30% to 80%
+    for (let i = 0; i < doanhThuSheetNames.length; i++) {
+        const name = doanhThuSheetNames[i];
+        const pct = 30 + Math.round((i / doanhThuSheetNames.length) * sheetRange);
+        report(pct, `Đang xử lý ${name} (${i + 1}/${doanhThuSheetNames.length})...`);
+        orders = orders.concat(parseDoanhThuSheet(workbook.Sheets[name]));
+        await new Promise(r => setTimeout(r, 0));
+    }
+
+    // Phase 4: Aggregate (80-90%)
+    report(80, `Đang tổng hợp ${orders.length.toLocaleString()} đơn hàng...`);
     const dailyIncome = aggregateDailyIncome(orders);
+    await new Promise(r => setTimeout(r, 0));
 
-    // Parse Adjustment sheet
-    const adjustmentSheet = workbook.Sheets['Adjustment'];
-    const adjustments = adjustmentSheet ? parseAdjustmentSheet(adjustmentSheet) : [];
+    // Phase 5: Parse Adjustments (90-100%)
+    report(90, 'Đang xử lý điều chỉnh...');
+    const adjustmentSheetNames = workbook.SheetNames.filter(n => n.startsWith('Adjustment'));
+    let adjustments: AdjustmentRecord[] = [];
+    for (const name of adjustmentSheetNames) {
+        adjustments = adjustments.concat(parseAdjustmentSheet(workbook.Sheets[name]));
+    }
 
+    report(100, 'Hoàn tất!');
     return { summary, orders, dailyIncome, adjustments };
 }
+
