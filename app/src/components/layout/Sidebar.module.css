@@ -1,0 +1,118 @@
+.sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--sidebar-width);
+    height: 100vh;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border-default);
+    display: flex;
+    flex-direction: column;
+    z-index: 50;
+    transition: width var(--transition-base);
+}
+
+/* Logo */
+.logo {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-lg);
+    border-bottom: 1px solid var(--border-default);
+}
+
+.logoIcon {
+    color: var(--accent-primary);
+    flex-shrink: 0;
+}
+
+.logoText {
+    font-size: 1.3rem;
+    font-weight: 800;
+    background: var(--gradient-teal);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Navigation */
+.nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: var(--space-md);
+    flex: 1;
+}
+
+.navItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 10px 14px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all var(--transition-fast);
+    text-decoration: none;
+}
+
+.navItem:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.navItemActive {
+    color: var(--accent-primary);
+    background: var(--accent-primary-dim);
+}
+
+.navItemActive:hover {
+    color: var(--accent-primary);
+    background: var(--accent-primary-dim);
+}
+
+.navLabel {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Footer */
+.footer {
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--border-default);
+}
+
+.version {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+/* Responsive */
+@media (max-width: 1279px) {
+    .sidebar {
+        width: var(--sidebar-collapsed);
+    }
+
+    .logoText,
+    .navLabel {
+        display: none;
+    }
+
+    .navItem {
+        justify-content: center;
+        padding: 12px;
+    }
+
+    .logo {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        display: none;
+    }
+}

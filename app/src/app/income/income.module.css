@@ -1,0 +1,447 @@
+/* Income Analysis Page Styles */
+
+/* Upload Section */
+.uploadSection {
+    margin-bottom: var(--space-lg);
+}
+
+.uploadZone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-xl) var(--space-lg);
+    border: 2px dashed var(--border-default);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    cursor: pointer;
+    transition: all var(--transition-base);
+    min-height: 140px;
+}
+
+.uploadZone:hover {
+    border-color: var(--accent-primary);
+    background: rgba(45, 212, 191, 0.04);
+}
+
+.uploadZoneDragging {
+    border-color: var(--accent-primary);
+    background: rgba(45, 212, 191, 0.08);
+    box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.1);
+}
+
+.uploadIcon {
+    color: var(--text-muted);
+    margin-bottom: var(--space-sm);
+}
+
+.uploadTitle {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.uploadSub {
+    font-size: 0.82rem;
+    color: var(--text-muted);
+}
+
+.fileInput {
+    display: none;
+}
+
+/* File Info Bar (after upload) */
+.fileInfoBar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(34, 197, 94, 0.06);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.fileInfoIcon {
+    color: #22c55e;
+}
+
+.fileInfoName {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.fileInfoMeta {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+}
+
+.fileInfoRight {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+/* Tab Navigation */
+.tabNav {
+    display: flex;
+    gap: 2px;
+    margin-bottom: var(--space-lg);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-lg);
+    padding: 4px;
+    overflow-x: auto;
+}
+
+.tabBtn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border: none;
+    background: transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    transition: all var(--transition-base);
+}
+
+.tabBtn:hover {
+    color: var(--text-primary);
+    background: var(--bg-tertiary);
+}
+
+.tabBtnActive {
+    background: var(--bg-card);
+    color: var(--accent-primary);
+    box-shadow: var(--shadow-sm);
+    font-weight: 600;
+}
+
+/* Summary Cards Grid */
+.summaryGrid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.summaryCard {
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    transition: all var(--transition-base);
+}
+
+.summaryCard:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.summaryCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-sm);
+}
+
+.summaryCardLabel {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.summaryCardIconWrap {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.summaryCardValue {
+    font-size: 1.45rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.2;
+    margin-bottom: 4px;
+}
+
+.summaryCardSub {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+}
+
+/* Charts */
+.chartsRow {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.chartsRowEqual {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.chartCard {
+    padding: var(--space-lg);
+}
+
+.chartTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.chartContainer {
+    width: 100%;
+}
+
+/* Fee Waterfall */
+.feeGrid {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xs);
+}
+
+.feeItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+}
+
+.feeLabel {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.feeValue {
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.feeBar {
+    flex: 1;
+    height: 6px;
+    background: var(--bg-secondary);
+    border-radius: 3px;
+    margin: 0 16px;
+    position: relative;
+    overflow: hidden;
+}
+
+.feeBarFill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.5s ease;
+}
+
+.feeTotal {
+    margin-top: var(--space-xs);
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+/* Table Section */
+.tableSection {
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+}
+
+.sectionTitle {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: var(--space-md);
+}
+
+.tableWrap {
+    overflow-x: auto;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-default);
+}
+
+/* Top Products */
+.productList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.productItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+}
+
+.productRank {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent-primary);
+    min-width: 28px;
+}
+
+.productInfo {
+    flex: 1;
+    min-width: 0;
+}
+
+.productName {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.productMeta {
+    font-size: 0.73rem;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
+.productValue {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent-primary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Stat Highlight Row */
+.highlightGrid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+}
+
+.highlightCard {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: var(--space-md) var(--space-lg);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+}
+
+.highlightIcon {
+    width: 40px;
+    height: 40px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.highlightValue {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.highlightLabel {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+/* Adjustment timeline */
+.adjustmentList {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.adjustmentItem {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    background: var(--bg-tertiary);
+    border-left: 3px solid #ef4444;
+}
+
+.adjustmentDate {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    min-width: 72px;
+}
+
+.adjustmentOrder {
+    font-family: monospace;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.adjustmentAmount {
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #ef4444;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Responsive */
+@media (max-width: 1279px) {
+    .summaryGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .chartsRow,
+    .chartsRowEqual {
+        grid-template-columns: 1fr;
+    }
+
+    .highlightGrid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .summaryGrid {
+        grid-template-columns: 1fr;
+    }
+
+    .tabNav {
+        gap: 0;
+    }
+
+    .tabBtn {
+        padding: 8px 12px;
+        font-size: 0.75rem;
+    }
+
+    .highlightGrid {
+        grid-template-columns: 1fr;
+    }
+}

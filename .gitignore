@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Next.js build
+.next/
+out/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Data files (sensitive)
+Datamauthang1/
+*.xlsx
+*.xls
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Misc
+*.tsbuildinfo
