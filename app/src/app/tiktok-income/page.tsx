@@ -705,6 +705,8 @@ interface DailyAgg {
     settlement: number;
     transactionFee: number;
     commissionFee: number;
+    vatWithheld: number;
+    pitWithheld: number;
 }
 
 function aggregateOrdersByMode(orders: TikTokIncomeResult['orders'], mode: TimeViewMode): DailyAgg[] {
@@ -713,7 +715,7 @@ function aggregateOrdersByMode(orders: TikTokIncomeResult['orders'], mode: TimeV
         const d = o.orderCreatedTime.replace(/\//g, '-');
         if (!d) return;
         const key = mode === 'day' ? d : mode === 'week' ? getISOWeek(d) : getMonthKey(d);
-        const existing = map.get(key) || { label: key, orders: 0, revenue: 0, fees: 0, affiliateComm: 0, settlement: 0, transactionFee: 0, commissionFee: 0 };
+        const existing = map.get(key) || { label: key, orders: 0, revenue: 0, fees: 0, affiliateComm: 0, settlement: 0, transactionFee: 0, commissionFee: 0, vatWithheld: 0, pitWithheld: 0 };
         existing.orders += 1;
         existing.revenue += o.totalRevenue;
         existing.fees += Math.abs(o.totalFees);
@@ -721,6 +723,8 @@ function aggregateOrdersByMode(orders: TikTokIncomeResult['orders'], mode: TimeV
         existing.settlement += o.totalSettlement;
         existing.transactionFee += Math.abs(o.transactionFee);
         existing.commissionFee += Math.abs(o.commissionFee);
+        existing.vatWithheld += Math.abs(o.vatWithheld || 0);
+        existing.pitWithheld += Math.abs(o.pitWithheld || 0);
         map.set(key, existing);
     });
     return [...map.values()].sort((a, b) => a.label.localeCompare(b.label));
@@ -854,6 +858,8 @@ function TabDaily({ data }: { data: TikTokIncomeResult }) {
                                 <th style={{ textAlign: 'right' }}>Hoa hồng TT</th>
                                 <th style={{ textAlign: 'right' }}>Phí giao dịch</th>
                                 <th style={{ textAlign: 'right' }}>TTLK</th>
+                                <th style={{ textAlign: 'right' }}>Thuế VAT</th>
+                                <th style={{ textAlign: 'right' }}>Thuế TNCN</th>
                                 <th style={{ textAlign: 'right' }}>Tổng phí</th>
                                 <th style={{ textAlign: 'right' }}>Thực nhận</th>
                                 <th style={{ textAlign: 'right' }}>Tỷ lệ phí</th>
@@ -870,6 +876,8 @@ function TabDaily({ data }: { data: TikTokIncomeResult }) {
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#ef4444' }}>{formatCurrency(d.commissionFee)}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#eab308' }}>{formatCurrency(d.transactionFee)}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#8b5cf6' }}>{formatCurrency(d.affiliateComm)}</td>
+                                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#64748b' }}>{formatCurrency(d.vatWithheld)}</td>
+                                        <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#64748b' }}>{formatCurrency(d.pitWithheld)}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#f97316' }}>{formatCurrency(d.fees)}</td>
                                         <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#22c55e', fontWeight: 600 }}>{formatCurrency(d.settlement)}</td>
                                         <td style={{ textAlign: 'right' }}>{feeR.toFixed(1)}%</td>

@@ -111,6 +111,9 @@ export interface TikTokOrderRecord {
     affiliateShopAds: number;
     voucherXtraFee: number;
     orderProcessingFee: number;
+    // Tax fields
+    vatWithheld: number;
+    pitWithheld: number;
 }
 
 export interface TikTokWithdrawal {
@@ -304,6 +307,9 @@ function parseOrderDetailsSheet(sheet: XLSX.WorkSheet): TikTokOrderRecord[] {
             affiliateShopAds: toNum(r[28]),
             voucherXtraFee: toNum(r[38]),
             orderProcessingFee: toNum(r[39]),
+            // Tax fields
+            vatWithheld: toNum(r[42]),
+            pitWithheld: toNum(r[43]),
         });
     }
 
