@@ -379,14 +379,17 @@ export default function ProductPnlPage() {
                             <ZAxis dataKey="revenue" range={[60, 400]} name="Doanh thu" />
                             <Tooltip
                                 contentStyle={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-default)', borderRadius: 8, fontSize: '0.78rem' }}
-                                formatter={(value: number, name: string) => {
-                                    if (name === 'Doanh thu') return [fmtCur(value), name];
-                                    if (name === 'Biên LN %') return [fmtPct(value), name];
-                                    return [fmtNum(value), name];
+                                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                formatter={(value: any, name: any) => {
+                                    const v = Number(value) || 0;
+                                    const n = String(name || '');
+                                    if (n === 'Doanh thu') return [fmtCur(v), n];
+                                    if (n === 'Biên LN %') return [fmtPct(v), n];
+                                    return [fmtNum(v), n];
                                 }}
                                 labelFormatter={(v) => `SKU: ${v}`}
                             />
-                            <Scatter data={scatterData} nameKey="sku">
+                            <Scatter data={scatterData}>
                                 {scatterData.map((entry, i) => (
                                     <Cell key={i} fill={entry.margin > 0 ? '#22c55e' : '#ef4444'} opacity={0.7} />
                                 ))}
